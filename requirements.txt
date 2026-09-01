@@ -1,0 +1,34 @@
+# Web Framework & API
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+requests
+httpx
+
+# Database & ORM
+sqlalchemy
+psycopg2-binary
+alembic
+
+# Data Science & Machine Learning
+pandas
+numpy
+scikit-learn
+xgboost
+joblib
+openpyxl
+
+# Diagnostics & Visualization
+matplotlib
+seaborn
+plotly
+streamlit
+
+# Background Tasks & MLOps Verification
+celery
+redis
+
+# Utilities
+python-dotenv
+python-dateutil
