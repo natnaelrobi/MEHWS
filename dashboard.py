@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 try:
     import sklearn._loss as sk_loss
     
-    # Explicitly inject the missing legacy class into sklearn._loss
     if not hasattr(sk_loss, "CyHalfBinomialLoss"):
         class CyHalfBinomialLoss:
             def __init__(self, *args, **kwargs):
@@ -39,20 +38,41 @@ BASE_DIR = Path(__file__).resolve().parent
 ARTIFACT_DIR = BASE_DIR / "artifacts"
 
 st.set_page_config(
-    page_title="AEGIS-core | Live Early Warning Command Center",
+    page_title="MEHWS | Live Early Warning Command Center",
     page_icon="🛡️",
     layout="wide"
 )
 
-st.markdown("""
+# --- Sidebar Theme Controls & Dynamic Styling ---
+with st.sidebar:
+    st.markdown("### 🎨 Interface Theme")
+    theme_mode = st.radio("Display Mode:", ["Dark", "Light"], horizontal=True, key="theme_mode_select")
+    
+    is_light = (theme_mode == "Light")
+    
+    # Theme color variables
+    bg_main = "#ffffff" if is_light else "#0b0f19"
+    card_bg = "#f8f9fa" if is_light else "#111827"
+    text_main = "#111827" if is_light else "#f3f4f6"
+    border_col = "#e5e7eb" if is_light else "#1f2937"
+    sidebar_bg = "#f1f5f9" if is_light else "#030712"
+    tab_bg = "#e2e8f0" if is_light else "#1f2937"
+    tab_selected = "#cbd5e1" if is_light else "#374151"
+    
+    plotly_bg = "#ffffff" if is_light else "#0b0f19"
+    plotly_plot_bg = "#f9fafb" if is_light else "#111827"
+    plotly_font = "#111827" if is_light else "white"
+    plotly_templ = "plotly_white" if is_light else "plotly_dark"
+
+st.markdown(f"""
     <style>
-    .main { background-color: #0b0f19; color: #f3f4f6; }
-    .stMetric { background-color: #111827; padding: 14px; border-radius: 8px; border: 1px solid #1f2937; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-    h1, h2, h3, h4 { color: #f9fafb !important; font-family: 'Inter', sans-serif; }
-    div[data-testid="stSidebar"] { background-color: #030712; border-right: 1px solid #1f2937; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
-    .stTabs [data-baseweb="tab"] { background-color: #1f2937; border-radius: 4px 4px 0px 0px; padding-top: 10px; padding-bottom: 10px; }
-    .stTabs [aria-selected="true"] { background-color: #374151 !important; color: white !important; border-bottom: 2px solid #3b82f6 !important; }
+    .main {{ background-color: {bg_main}; color: {text_main}; }}
+    .stMetric {{ background-color: {card_bg}; padding: 14px; border-radius: 8px; border: 1px solid {border_col}; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}
+    h1, h2, h3, h4 {{ color: {text_main} !important; font-family: 'Inter', sans-serif; }}
+    div[data-testid="stSidebar"] {{ background-color: {sidebar_bg}; border-right: 1px solid {border_col}; }}
+    .stTabs [data-baseweb="tab-list"] {{ gap: 8px; }}
+    .stTabs [data-baseweb="tab"] {{ background-color: {tab_bg}; border-radius: 4px 4px 0px 0px; padding-top: 10px; padding-bottom: 10px; color: {text_main}; }}
+    .stTabs [aria-selected="true"] {{ background-color: {tab_selected} !important; color: {text_main} !important; border-bottom: 2px solid #3b82f6 !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -84,11 +104,10 @@ def load_ml_pipelines():
 
 @st.cache_data
 def load_spatial_nodes():
-    """Loads all Ethiopian woredas and coordinates directly from eth_admin3_gzt.csv."""
     path = BASE_DIR / "eth_admin3_gzt.csv"
     
     if not path.exists():
-        st.error(f"Critical Error: 'eth_admin3_gzt.csv' not found at {path}. Please place the CSV in the same folder as dashboard.py.")
+        st.error(f"Critical Error: 'eth_admin3_gzt.csv' not found at {path}.")
         zones = ["Addis Ababa Woreda 06", "Dire Dawa", "Jimma"]
         return pd.DataFrame({
             "ADM2_NAME": zones, 
@@ -102,7 +121,6 @@ def load_spatial_nodes():
         })
         
     df = pd.read_csv(path)
-    
     rename_map = {
         'admin3name': 'ADM2_NAME',
         'admin3_pcod': 'ADM2_CODE',
@@ -214,6 +232,7 @@ def generate_hazard_predictions(df_hourly, df_daily, spatial_row, flood_pipe, dr
     return df_f, df_d
 
 with st.sidebar:
+    st.markdown("---")
     st.markdown("### 🎛️ Command Controls")
     selected_zone_name = st.selectbox("🎯 Target Zone:", options=df_regions["ADM2_NAME"].tolist())
     target_row = df_regions[df_regions["ADM2_NAME"] == selected_zone_name].iloc[0]
@@ -250,7 +269,7 @@ current_flood_max = pred_hourly['flood_risk_prob'].max() * 100
 current_drought_max = pred_daily['drought_risk_prob'].max() * 100
 zones_monitored = len(df_regions)
 
-st.title("🛡️ AEGIS-core | National Early Warning Command")
+st.title("🛡️ MEHWS | National Early Warning Command")
 st.markdown("---")
 
 m1, m2, m3, m4 = st.columns(4)
@@ -280,10 +299,11 @@ with tab_flood:
         flood_plot_df, x='time', y='flood_risk_prob',
         title=f"{f_days}-Day High-Resolution Flood Probability (Action Threshold: 50%)",
         labels={'flood_risk_prob': 'Flood Probability (0 to 1)', 'time': 'Timestamp'},
-        color_discrete_sequence=["#3b82f6"]
+        color_discrete_sequence=["#3b82f6"],
+        template=plotly_templ
     )
     fig_f.add_hline(y=0.5, line_dash="dash", line_color="red", annotation_text="Action Threshold (>50%)")
-    fig_f.update_layout(paper_bgcolor="#0b0f19", plot_bgcolor="#111827", font=dict(color="white"), yaxis_range=[0, 1])
+    fig_f.update_layout(paper_bgcolor=plotly_bg, plot_bgcolor=plotly_plot_bg, font=dict(color=plotly_font), yaxis_range=[0, 1])
     st.plotly_chart(fig_f, use_container_width=True)
 
 with tab_drought:
@@ -297,13 +317,13 @@ with tab_drought:
         drought_plot_df, x='time', y='drought_risk_prob',
         title=f"{d_days}-Day Cumulative Drought Probability (Action Threshold: 50%)",
         labels={'drought_risk_prob': 'Drought Probability (0 to 1)', 'time': 'Date'},
-        color_discrete_sequence=["#f59e0b"]
+        color_discrete_sequence=["#f59e0b"],
+        template=plotly_templ
     )
     fig_d.add_hline(y=0.5, line_dash="dash", line_color="red", annotation_text="Action Threshold (>50%)")
-    fig_d.update_layout(paper_bgcolor="#0b0f19", plot_bgcolor="#111827", font=dict(color="white"), yaxis_range=[0, 1])
+    fig_d.update_layout(paper_bgcolor=plotly_bg, plot_bgcolor=plotly_plot_bg, font=dict(color=plotly_font), yaxis_range=[0, 1])
     st.plotly_chart(fig_d, use_container_width=True)
 
-# Generate pseudo-spatial distribution across all woredas with override for selected target zone
 np.random.seed(42)
 df_map_data = df_regions.copy()
 
@@ -315,13 +335,12 @@ df_map_data.loc[df_map_data['ADM2_NAME'] == selected_zone_name, 'Drought Risk Sc
 
 def get_risk_color(score):
     if score > 0.5:
-        return "#dc2626" # Vibrant Red - High Risk
+        return "#dc2626"
     elif score >= 0.2:
-        return "#d97706" # Amber/Orange - Moderate Risk
+        return "#d97706"
     else:
-        return "#059669" # Emerald Green - Low Risk
+        return "#059669"
 
-# Cached map creation to eliminate unnecessary reloads and flickering
 @st.cache_data
 def build_folium_map(df_serialized, target_zone, hazard_type):
     m = folium.Map(
@@ -368,4 +387,4 @@ with tab_map_drought:
     st_folium(m_drought, width="100%", height=600, key="folium_drought", returned_objects=[])
 
 st.markdown("---")
-st.caption("🚀 AEGIS-core Engine | Powered by Streamlit, Scikit-Learn Ensembles, Folium GIS, and Open-Meteo S2S Live API")
+st.caption("🚀 MEHWS Engine | Powered by Streamlit, Scikit-Learn Ensembles, Folium GIS, and Open-Meteo S2S Live API")
