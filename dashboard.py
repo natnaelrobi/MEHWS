@@ -14,17 +14,24 @@ from datetime import datetime, timedelta
 # --- Compatibility Shim for Legacy scikit-learn Models ---
 try:
     import sklearn._loss as sk_loss
+    
+    # Explicitly inject the missing legacy class into sklearn._loss
+    if not hasattr(sk_loss, "CyHalfBinomialLoss"):
+        class CyHalfBinomialLoss:
+            def __init__(self, *args, **kwargs):
+                pass
+        sk_loss.CyHalfBinomialLoss = CyHalfBinomialLoss
+        
     sys.modules["_loss"] = sk_loss
+    sys.modules["sklearn._loss"] = sk_loss
 except ImportError:
     dummy_loss = types.ModuleType("_loss")
+    class CyHalfBinomialLoss:
+        def __init__(self, *args, **kwargs):
+            pass
+    dummy_loss.CyHalfBinomialLoss = CyHalfBinomialLoss
     sys.modules["_loss"] = dummy_loss
-
-if "sklearn._loss" not in sys.modules:
-    try:
-        import sklearn._loss as sk_loss
-        sys.modules["sklearn._loss"] = sk_loss
-    except ImportError:
-        pass
+    sys.modules["sklearn._loss"] = dummy_loss
 # ---------------------------------------------------------
 
 # Robustly define base directory where dashboard.py and eth_admin3_gzt.csv reside
