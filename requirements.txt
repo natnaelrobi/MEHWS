@@ -14,7 +14,7 @@ alembic
 # Data Science & Machine Learning
 pandas
 numpy
-scikit-learn
+scikit-learn==1.9.0
 xgboost
 joblib
 openpyxl
