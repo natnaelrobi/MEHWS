@@ -33,9 +33,8 @@ except ImportError:
     sys.modules["sklearn._loss"] = dummy_loss
 # ---------------------------------------------------------
 
-# Robustly define base directory where dashboard.py and eth_admin3_gzt.csv reside
+# Robustly define base directory where dashboard.py and data/models reside
 BASE_DIR = Path(__file__).resolve().parent
-ARTIFACT_DIR = BASE_DIR / "artifacts"
 
 st.set_page_config(
     page_title="MEHWS | Live Early Warning Command Center",
@@ -45,36 +44,60 @@ st.set_page_config(
 
 @st.cache_resource
 def load_ml_pipelines():
-    flood_path = ARTIFACT_DIR / "aegis_flood_ensemble_model.pkl"
-    drought_path = ARTIFACT_DIR / "aegis_drought_ensemble_model.pkl"
+    # Check multiple common locations for model files (root vs artifacts folder)
+    possible_dirs = [
+        BASE_DIR,
+        BASE_DIR / "artifacts",
+        BASE_DIR.parent,
+        BASE_DIR.parent / "artifacts"
+    ]
     
+    flood_path, drought_path = None, None
+    for d in possible_dirs:
+        f_candidate = d / "aegis_flood_ensemble_model.pkl"
+        d_candidate = d / "aegis_drought_ensemble_model.pkl"
+        if f_candidate.exists() and not flood_path:
+            flood_path = f_candidate
+        if d_candidate.exists() and not drought_path:
+            drought_path = d_candidate
+            
     flood_pipe, drought_pipe = None, None
     load_errors = []
     
-    if flood_path.exists():
+    if flood_path and flood_path.exists():
         try:
             flood_pipe = joblib.load(flood_path)
         except Exception as e:
-            load_errors.append(f"Flood model load error: {e}")
+            load_errors.append(f"Flood model load error ({flood_path.name}): {e}")
     else:
-        load_errors.append("Flood model file not found.")
+        load_errors.append("Flood model file not found in root or artifacts/.")
         
-    if drought_path.exists():
+    if drought_path and drought_path.exists():
         try:
             drought_pipe = joblib.load(drought_path)
         except Exception as e:
-            load_errors.append(f"Drought model load error: {e}")
+            load_errors.append(f"Drought model load error ({drought_path.name}): {e}")
     else:
-        load_errors.append("Drought model file not found.")
+        load_errors.append("Drought model file not found in root or artifacts/.")
             
     return flood_pipe, drought_pipe, load_errors
 
 @st.cache_data
 def load_spatial_nodes():
-    path = BASE_DIR / "eth_admin3_gzt.csv"
+    possible_csv_paths = [
+        BASE_DIR / "eth_admin3_gzt.csv",
+        BASE_DIR / "artifacts" / "eth_admin3_gzt.csv",
+        BASE_DIR.parent / "eth_admin3_gzt.csv"
+    ]
     
-    if not path.exists():
-        st.error(f"Critical Error: 'eth_admin3_gzt.csv' not found at {path}.")
+    path = None
+    for p in possible_csv_paths:
+        if p.exists():
+            path = p
+            break
+            
+    if not path or not path.exists():
+        st.error("Critical Error: 'eth_admin3_gzt.csv' not found.")
         zones = ["Addis Ababa Woreda 06", "Dire Dawa", "Jimma"]
         return pd.DataFrame({
             "ADM2_NAME": zones, 
@@ -210,7 +233,7 @@ with st.sidebar:
     else:
         st.warning("⚠️ Using Heuristic Baselines")
         with st.expander("🔍 View Loading Diagnostics"):
-            st.code(f"Target Dir: {ARTIFACT_DIR}\n" + "\n".join(model_errors))
+            st.code(f"Base Dir: {BASE_DIR}\n" + "\n".join(model_errors))
             
     st.info("🌐 Live API Data Connected")
     
