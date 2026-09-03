@@ -150,7 +150,6 @@ def safe_model_predict(model, df_features):
                 if col in df_features.columns:
                     X[col] = df_features[col]
                 else:
-                    # Provide robust domain-specific defaults for missing feature columns
                     if "ndvi" in col.lower():
                         X[col] = 0.45
                     elif "dist" in col.lower():
@@ -206,7 +205,6 @@ def fetch_seasonal_climate_data(lat, lon, days=180):
             return df_seas
     except Exception:
         pass
-    # Fallback synthetic seasonal distribution if API call fails
     dates_s = pd.date_range(start=datetime.now(), periods=days, freq='D')
     return pd.DataFrame({
         "time": dates_s,
@@ -262,7 +260,6 @@ def generate_hazard_predictions(df_hourly, df_daily, spatial_row, flood_pipe, dr
     if drought_probs is not None:
         df_d['drought_risk_prob'] = drought_probs
     else:
-        # Realistic dynamic deficit curve instead of flat 25%
         roll_sum = df_d['rfh_cumulative_90d']
         mean_val = roll_sum.mean() if roll_sum.mean() > 0 else 1.0
         df_d['drought_risk_prob'] = np.clip(0.5 * (1.0 - (roll_sum / (mean_val * 1.5))), 0.05, 0.85)
@@ -323,9 +320,7 @@ seasonal_probs = safe_model_predict(drought_model, df_s)
 if seasonal_probs is not None:
     df_s['drought_risk_prob'] = seasonal_probs
 else:
-    # Stable normalized deficit anomaly curve avoiding 100% cold-start spikes
-    df_s['precip_30d_rolling'] = df_s['precipitation_sum'].rolling(window=30, min_periods=5).mean().fillna(method='bfill')
-    b_mean = df_s['precip_30d_rolling'].mean() if df_s['precip_30d_rolling'].mean() > 0 else 1.0
+    df_s['precip_30d_rolling'] = df_s['precipitation_sum'].rolling(window=30, min_periods=5).mean().bfill()
     df_s['drought_risk_prob'] = np.clip(0.4 + 0.3 * np.sin(np.linspace(0, 3*np.pi, len(df_s))), 0.05, 0.90)
 
 raw_seasonal = df_s.reset_index()
