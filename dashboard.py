@@ -44,7 +44,6 @@ st.set_page_config(
 
 @st.cache_resource
 def load_ml_pipelines():
-    # Check multiple common locations for model files (root vs artifacts folder)
     possible_dirs = [
         BASE_DIR,
         BASE_DIR / "artifacts",
@@ -312,13 +311,6 @@ with tab_drought:
     st.plotly_chart(fig_d, use_container_width=True)
 
 np.random.seed(42)
-df_map_data = df_regions.copy()
-
-df_map_data['Flood Risk Score'] = np.random.uniform(0.05, 0.45, len(df_map_data))
-df_map_data.loc[df_map_data['ADM2_NAME'] == selected_zone_name, 'Flood Risk Score'] = current_flood_max / 100.0
-
-df_map_data['Drought Risk Score'] = np.random.uniform(0.10, 0.40, len(df_map_data))
-df_map_data.loc[df_map_data['ADM2_NAME'] == selected_zone_name, 'Drought Risk Score'] = current_drought_max / 100.0
 
 def get_risk_color(score):
     if score > 0.5:
@@ -329,7 +321,7 @@ def get_risk_color(score):
         return "#059669"
 
 @st.cache_data
-def build_folium_map(df_serialized, target_zone, hazard_type):
+def build_folium_map(df_serialized, target_zone, hazard_type, horizon_label):
     m = folium.Map(
         location=[9.145, 40.489], 
         zoom_start=6, 
@@ -352,26 +344,46 @@ def build_folium_map(df_serialized, target_zone, hazard_type):
             fill=True,
             fill_color=color,
             fill_opacity=0.9 if is_target else 0.75,
-            popup=folium.Popup(f"<b>Woreda:</b> {row['ADM2_NAME']}<br><b>Zone:</b> {row.get('ZONE_NAME', 'N/A')}<br><b>Risk:</b> {score*100:.1f}%", max_width=300),
-            tooltip=f"{row['ADM2_NAME']}: {score*100:.1f}%"
+            popup=folium.Popup(f"<b>Woreda:</b> {row['ADM2_NAME']}<br><b>Zone:</b> {row.get('ZONE_NAME', 'N/A')}<br><b>{horizon_label} Risk:</b> {score*100:.1f}%", max_width=300),
+            tooltip=f"{row['ADM2_NAME']} ({horizon_label}): {score*100:.1f}%"
         ).add_to(m)
     return m
 
 with tab_map_flood:
     st.subheader("🌊 National GIS Flash Flood Command Map")
-    st.markdown("""
-    **GIS Legend & Thresholds:** 🔴 **High Risk (>50%)** | 🟡 **Moderate Risk (20-50%)** | 🟢 **Low Risk (<20%)**
+    map_flood_horizon = st.radio("Select GIS Flood Horizon:", ["7-Day Tactical Peak", "16-Day Extended Peak"], horizontal=True, key="map_f_horizon")
+    
+    f_hours_limit = 7 * 24 if "7" in map_flood_horizon else 16 * 24
+    selected_flood_score = pred_hourly.head(f_hours_limit)['flood_risk_prob'].max()
+    
+    df_map_flood = df_regions.copy()
+    df_map_flood['Flood Risk Score'] = np.random.uniform(0.05, 0.45, len(df_map_flood))
+    df_map_flood.loc[df_map_flood['ADM2_NAME'] == selected_zone_name, 'Flood Risk Score'] = selected_flood_score
+
+    st.markdown(f"""
+    **Active View:** Displaying **{map_flood_horizon}** peak probability for **{selected_zone_name}** ({selected_flood_score*100:.1f}%).  
+    **GIS Legend:** 🔴 **High Risk (>50%)** | 🟡 **Moderate Risk (20-50%)** | 🟢 **Low Risk (<20%)**
     """)
-    m_flood = build_folium_map(df_map_data[['ADM2_NAME', 'ZONE_NAME', 'lat', 'lon', 'Flood Risk Score']], selected_zone_name, 'Flood Risk Score')
-    st_folium(m_flood, width="100%", height=600, key="folium_flood", returned_objects=[])
+    m_flood = build_folium_map(df_map_flood[['ADM2_NAME', 'ZONE_NAME', 'lat', 'lon', 'Flood Risk Score']], selected_zone_name, 'Flood Risk Score', map_flood_horizon)
+    st_folium(m_flood, width="100%", height=550, key="folium_flood", returned_objects=[])
 
 with tab_map_drought:
     st.subheader("☀️ National GIS Agricultural & Hydrological Drought Command Map")
-    st.markdown("""
-    **GIS Legend & Thresholds:** 🔴 **High Risk (>50%)** | 🟡 **Moderate Risk (20-50%)** | 🟢 **Low Risk (<20%)**
+    map_drought_horizon = st.radio("Select GIS Drought Horizon:", ["7-Day Short-Term Peak", "16-Day Sub-Seasonal Peak"], horizontal=True, key="map_d_horizon")
+    
+    d_days_limit = 7 if "7" in map_drought_horizon else 16
+    selected_drought_score = pred_daily.head(d_days_limit)['drought_risk_prob'].max()
+    
+    df_map_drought = df_regions.copy()
+    df_map_drought['Drought Risk Score'] = np.random.uniform(0.10, 0.40, len(df_map_drought))
+    df_map_drought.loc[df_map_drought['ADM2_NAME'] == selected_zone_name, 'Drought Risk Score'] = selected_drought_score
+
+    st.markdown(f"""
+    **Active View:** Displaying **{map_drought_horizon}** peak probability for **{selected_zone_name}** ({selected_drought_score*100:.1f}%).  
+    **GIS Legend:** 🔴 **High Risk (>50%)** | 🟡 **Moderate Risk (20-50%)** | 🟢 **Low Risk (<20%)**
     """)
-    m_drought = build_folium_map(df_map_data[['ADM2_NAME', 'ZONE_NAME', 'lat', 'lon', 'Drought Risk Score']], selected_zone_name, 'Drought Risk Score')
-    st_folium(m_drought, width="100%", height=600, key="folium_drought", returned_objects=[])
+    m_drought = build_folium_map(df_map_drought[['ADM2_NAME', 'ZONE_NAME', 'lat', 'lon', 'Drought Risk Score']], selected_zone_name, 'Drought Risk Score', map_drought_horizon)
+    st_folium(m_drought, width="100%", height=550, key="folium_drought", returned_objects=[])
 
 st.markdown("---")
 st.caption("🚀 MEHWS Engine | Powered by Streamlit, Scikit-Learn Ensembles, Folium GIS, and Open-Meteo S2S Live API")
