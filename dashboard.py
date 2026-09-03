@@ -139,7 +139,6 @@ def load_spatial_nodes():
 flood_model, drought_model, model_errors = load_ml_pipelines()
 
 def safe_model_predict(model, df_features):
-    """Safely aligns features with model expectations and computes predict_proba."""
     if model is None:
         return None
     try:
@@ -150,23 +149,13 @@ def safe_model_predict(model, df_features):
                 if col in df_features.columns:
                     X[col] = df_features[col]
                 else:
-                    if "ndvi" in col.lower():
-                        X[col] = 0.45
-                    elif "dist" in col.lower():
-                        X[col] = 1500.0
-                    elif "slope" in col.lower():
-                        X[col] = 8.5
-                    elif "soil" in col.lower():
-                        X[col] = 20.0
-                    elif "lag" in col.lower() or "cum" in col.lower():
-                        X[col] = df_features.iloc[:, 0].mean() if not df_features.empty else 0.0
-                    else:
-                        X[col] = 0.0
+                    X[col] = 0.0 # or appropriate default
             return model.predict_proba(X)[:, 1]
         else:
             X = df_features.select_dtypes(include=[np.number])
             return model.predict_proba(X)[:, 1]
-    except Exception:
+    except Exception as e:
+        st.error(f"Model prediction error: {e}")  # Expose the real error
         return None
 
 df_regions = load_spatial_nodes()
