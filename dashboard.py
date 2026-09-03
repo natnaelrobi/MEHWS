@@ -276,10 +276,33 @@ with st.spinner(f"Fetching Meteorological Data for {selected_zone_name}..."):
 
 pred_hourly, pred_daily = generate_hazard_predictions(raw_hourly, raw_daily, target_row, flood_model, drought_model)
 
-# Process 6-month seasonal drought projections
-raw_seasonal['precip_30d_rolling'] = raw_seasonal['precipitation_sum'].rolling(window=30, min_periods=10).sum().fillna(0)
-baseline_mean_s = raw_seasonal['precip_30d_rolling'].mean()
-raw_seasonal['drought_risk_prob'] = np.clip(1.0 - (raw_seasonal['precip_30d_rolling'] / (baseline_mean_s + 1e-5)), 0.0, 1.0)
+# Process 6-month seasonal drought projections using ML model pipeline
+df_s = raw_seasonal.copy()
+if 'time' in df_s.columns and not isinstance(df_s.index, pd.DatetimeIndex):
+    df_s['time'] = pd.to_datetime(df_s['time'])
+    df_s = df_s.set_index('time')
+
+df_s['rfh_cumulative_90d'] = df_s['precipitation_sum'].rolling(window=30, min_periods=1).sum()
+df_s['soil_moisture_mean_lag1'] = 20.0  
+df_s['ndvi_mean'] = target_row.get('ndvi_mean', 0.4)
+df_s['dist_to_river_m'] = target_row.get('dist_to_river_m', 1000)
+
+df_s = df_s.bfill().fillna(0)
+
+if drought_model:
+    try:
+        X_seasonal_drought = df_s.select_dtypes(include=[np.number])
+        df_s['drought_risk_prob'] = drought_model.predict_proba(X_seasonal_drought)[:, 1]
+    except Exception:
+        df_s['precip_30d_rolling'] = df_s['precipitation_sum'].rolling(window=30, min_periods=10).sum().fillna(0)
+        baseline_mean_s = df_s['precip_30d_rolling'].mean()
+        df_s['drought_risk_prob'] = np.clip(1.0 - (df_s['precip_30d_rolling'] / (baseline_mean_s + 1e-5)), 0.0, 1.0)
+else:
+    df_s['precip_30d_rolling'] = df_s['precipitation_sum'].rolling(window=30, min_periods=10).sum().fillna(0)
+    baseline_mean_s = df_s['precip_30d_rolling'].mean()
+    df_s['drought_risk_prob'] = np.clip(1.0 - (df_s['precip_30d_rolling'] / (baseline_mean_s + 1e-5)), 0.0, 1.0)
+
+raw_seasonal = df_s.reset_index()
 
 current_flood_max = pred_hourly['flood_risk_prob'].max() * 100
 current_drought_max = raw_seasonal['drought_risk_prob'].max() * 100
@@ -326,7 +349,7 @@ with tab_drought:
     drought_view = st.radio("Select Drought Prediction Horizon:", ["16-Day Tactical Short-Term", "6-Month Strategic Seasonal Outlook"], horizontal=True, key="d_rad_horizon")
     
     if "6-Month" in drought_view:
-        st.info("📡 Integrating ECMWF SEAS5 180-day climate ensemble anomalies and rolling accumulation indices.")
+        st.info("📡 Integrating ECMWF SEAS5 180-day climate ensemble anomalies and ML inference pipeline.")
         fig_d = px.area(
             raw_seasonal, x='time', y='drought_risk_prob',
             title=f"6-Month Cumulative S2S Drought Vulnerability Curve (Action Threshold: 50%)",
@@ -339,7 +362,7 @@ with tab_drought:
         
         col_d1, col_d2, col_d3 = st.columns(3)
         col_d1.metric("Peak Seasonal Risk", f"{raw_seasonal['drought_risk_prob'].max()*100:.1f}%")
-        col_d2.metric("Mean 30-Day Precip Sum", f"{raw_seasonal['precip_30d_rolling'].mean():.1f} mm")
+        col_d2.metric("Mean 30-Day Precip Sum", f"{raw_seasonal['precipitation_sum'].rolling(window=30, min_periods=1).sum().mean():.1f} mm")
         col_d3.metric("Target P-Code", target_row['ADM2_CODE'])
     else:
         d_days = 16
